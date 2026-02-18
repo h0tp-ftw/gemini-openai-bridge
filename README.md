@@ -42,6 +42,17 @@ curl http://localhost:3000/v1/chat/completions \
 - **Process Management**: Spawns `gemini -p <prompt> --output-format stream-json --yolo` in the background.
 - **Response Translation**: Translates Gemini's periodic JSON updates into OpenAI Server-Sent Events (SSE).
 
+## Automatic Caching
+
+One of the most powerful features of using the Gemini CLI as a backend is **Automatic Context Caching**. 
+
+As you continue a conversation through this bridge, the Gemini CLI automatically caches the context of your previous messages. This means:
+- **Zero Configuration**: No need to manually manage cache TTLs or IDs.
+- **Lower Latency**: Follow-up questions are processed significantly faster.
+- **Cost Efficiency**: You only pay for the full input once; subsequent turns use the cache.
+
+The bridge captures these caching statistics and reports them back in the standard OpenAI `usage` object.
+
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

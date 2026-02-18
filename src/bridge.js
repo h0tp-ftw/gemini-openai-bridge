@@ -20,6 +20,7 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
     const id = `chatcmpl-${Math.random().toString(36).substring(7)}`;
     const model = options.model || 'gemini-cli-bridge';
     let fullResponse = '';
+    let stats = null;
     let tempSystemFile = null;
 
     // 2. Prepare environment and arguments
@@ -58,6 +59,8 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
                 if (json.type === 'message' && json.role === 'assistant' && json.content) {
                     fullResponse += json.content;
                     onChunk(formatChatCompletionChunk(id, model, json.content));
+                } else if (json.type === 'result' && json.stats) {
+                    stats = json.stats;
                 }
             } catch (e) {
                 // Not JSON or partial JSON
@@ -84,7 +87,7 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
         if (code !== 0) {
             onError(new Error(`Gemini CLI exited with code ${code}`));
         } else {
-            onEnd(id, model, fullResponse);
+            onEnd(id, model, fullResponse, stats);
         }
     });
 

@@ -24,7 +24,27 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
             (chunk) => {
                 reply.raw.write(`data: ${chunk}\n\n`);
             },
-            (id, modelName, fullResponse) => {
+            (id, modelName, fullResponse, stats) => {
+                if (stats) {
+                    const usageChunk = {
+                        id,
+                        object: 'chat.completion.chunk',
+                        created: Math.floor(Date.now() / 1000),
+                        model: modelName,
+                        choices: [],
+                        usage: {
+                            prompt_tokens: stats.input_tokens,
+                            completion_tokens: stats.output_tokens,
+                            total_tokens: stats.total_tokens
+                        }
+                    };
+                    if (stats.cached > 0) {
+                        usageChunk.usage.prompt_tokens_details = {
+                            cached_tokens: stats.cached
+                        };
+                    }
+                    reply.raw.write(`data: ${JSON.stringify(usageChunk)}\n\n`);
+                }
                 reply.raw.write(`data: ${formatChatCompletionChunk(id, modelName, null, 'stop')}\n\n`);
                 reply.raw.write('data: [DONE]\n\n');
                 reply.raw.end();
@@ -40,18 +60,27 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
         return reply;
     } else {
         return new Promise((resolve, reject) => {
-            let fullResponse = '';
-            let completionId = '';
-            let completionModel = '';
-
             runGeminiBridge(
                 messages,
                 { model },
                 (chunk) => {
-                    // Ignore chunks in non-streaming mode, we collect the full response
+                    // Ignore chunks in non-streaming mode
                 },
-                (id, modelName, response) => {
-                    resolve(JSON.parse(formatChatCompletion(id, modelName, response)));
+                (id, modelName, response, stats) => {
+                    let usage = null;
+                    if (stats) {
+                        usage = {
+                            prompt_tokens: stats.input_tokens,
+                            completion_tokens: stats.output_tokens,
+                            total_tokens: stats.total_tokens
+                        };
+                        if (stats.cached > 0) {
+                            usage.prompt_tokens_details = {
+                                cached_tokens: stats.cached
+                            };
+                        }
+                    }
+                    resolve(JSON.parse(formatChatCompletion(id, modelName, response, usage)));
                 },
                 (error) => {
                     reject(error);

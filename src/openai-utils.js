@@ -14,7 +14,7 @@ function formatChatCompletionChunk(id, model, content, finishReason = null) {
     });
 }
 
-function formatChatCompletion(id, model, content) {
+function formatChatCompletion(id, model, content, usage = null) {
     return JSON.stringify({
         id,
         object: 'chat.completion',
@@ -30,7 +30,7 @@ function formatChatCompletion(id, model, content) {
                 finish_reason: 'stop'
             }
         ],
-        usage: {
+        usage: usage || {
             prompt_tokens: 0,
             completion_tokens: 0,
             total_tokens: 0
