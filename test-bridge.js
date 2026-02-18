@@ -1,7 +1,10 @@
 const http = require('http');
 
 const data = JSON.stringify({
-    messages: [{ role: 'user', content: 'Say "Bridge works!"' }],
+    messages: [
+        { role: 'system', content: 'You are a helpful pirate. Always end your sentences with Arrr!' },
+        { role: 'user', content: 'Say "Bridge works!"' }
+    ],
     stream: true,
     model: 'gemini-pro'
 });
