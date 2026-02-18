@@ -1,0 +1,43 @@
+# Gemini CLI to OpenAI Bridge
+
+This project provides an OpenAI-compatible API endpoint that routes requests to the `gemini` CLI tool. It allows you to use `gemini` as a drop-in replacement for OpenAI in many tools and integrations.
+
+## Prerequisites
+
+- Node.js installed.
+- `@google/gemini-cli` installed and authenticated on your system.
+- `gemini` command available in your PATH (or configured in `src/bridge.js`).
+
+## Installation
+
+1. Clone or copy the project files.
+2. Install dependencies:
+   ```bash
+   npm install
+   ```
+
+## Usage
+
+1. Start the server:
+   ```bash
+   node index.js
+   ```
+2. The endpoint will be available at `http://localhost:3000/v1/chat/completions`.
+
+## Example CURL (Streaming)
+
+```bash
+curl http://localhost:3000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-pro",
+    "messages": [{"role": "user", "content": "Say hello!"}],
+    "stream": true
+  }'
+```
+
+## How it works
+
+- **Request Translation**: OpenAI `messages` are combined into a single prompt for the Gemini CLI.
+- **Process Management**: Spawns `gemini -p <prompt> --output-format stream-json --yolo` in the background.
+- **Response Translation**: Translates Gemini's periodic JSON updates into OpenAI Server-Sent Events (SSE).
