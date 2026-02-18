@@ -5,7 +5,10 @@ const { spawn } = require('cross-spawn');
 const { formatChatCompletionChunk, formatChatCompletion, formatToolCallChunk } = require('./openai-utils');
 
 function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
-    const { tools, tool_choice, use_native_tools = false } = options;
+    const {
+        tools, tool_choice, use_native_tools = false,
+        temperature, max_tokens, top_p, stop
+    } = options;
 
     // 1. Extract system and user/assistant messages
     const systemMessages = messages.filter(m => m.role === 'system');
@@ -85,6 +88,19 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
     if (options.model && options.model !== 'gemini-cli-bridge') {
         if (!settings.model) settings.model = {};
         settings.model.name = options.model;
+    }
+
+    // Map generation parameters
+    if (!settings.model) settings.model = {};
+    if (!settings.model.modelConfig) settings.model.modelConfig = {};
+    if (!settings.model.modelConfig.generateContentConfig) settings.model.modelConfig.generateContentConfig = {};
+
+    const genConfig = settings.model.modelConfig.generateContentConfig;
+    if (typeof temperature === 'number') genConfig.temperature = temperature;
+    if (typeof top_p === 'number') genConfig.topP = top_p;
+    if (typeof max_tokens === 'number') genConfig.maxOutputTokens = max_tokens;
+    if (stop) {
+        genConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
     }
 
     if (!use_native_tools) {

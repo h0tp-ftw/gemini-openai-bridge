@@ -2,12 +2,19 @@ require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
 const cors = require('@fastify/cors');
 const { runGeminiBridge } = require('./src/bridge');
-const { formatChatCompletionChunk, formatChatCompletion } = require('./src/openai-utils');
+const { formatChatCompletionChunk, formatChatCompletion, formatModelsList } = require('./src/openai-utils');
 
 fastify.register(cors, { origin: '*' });
 
+fastify.get('/v1/models', async (request, reply) => {
+    return JSON.parse(formatModelsList());
+});
+
 fastify.post('/v1/chat/completions', async (request, reply) => {
-    const { messages, stream, model, tools, tool_choice, use_native_tools } = request.body;
+    const {
+        messages, stream, model, tools, tool_choice, use_native_tools,
+        temperature, max_tokens, top_p, stop
+    } = request.body;
 
     if (!messages || !Array.isArray(messages)) {
         return reply.status(400).send({ error: 'Invalid messages' });
@@ -20,7 +27,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
 
         runGeminiBridge(
             messages,
-            { model, tools, tool_choice, use_native_tools },
+            { model, tools, tool_choice, use_native_tools, temperature, max_tokens, top_p, stop },
             (chunk) => {
                 reply.raw.write(`data: ${chunk}\n\n`);
             },
@@ -62,7 +69,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
         return new Promise((resolve, reject) => {
             runGeminiBridge(
                 messages,
-                { model, tools, tool_choice, use_native_tools },
+                { model, tools, tool_choice, use_native_tools, temperature, max_tokens, top_p, stop },
                 (chunk) => {
                     // Ignore chunks in non-streaming mode
                 },
