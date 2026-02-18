@@ -1,0 +1,17 @@
+{
+    "general": {
+        "previewFeatures": true,
+        "checkpointing": {
+            "enabled": true
+        }
+    },
+    "privacy": {
+        "usageStatisticsEnabled": false
+    },
+    "telemetry": {
+        "enabled": false
+    },
+    "model": {
+        "name": "gemini-2.0-flash-exp"
+    }
+}

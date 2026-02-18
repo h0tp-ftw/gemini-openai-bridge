@@ -70,36 +70,47 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         }
     }
 
-    // Handle Robust Tool Blocking
-    if (!use_native_tools) {
-        tempSettingsFile = path.join(os.tmpdir(), `gemini-settings-${id}.json`);
-        const settings = {
-            tools: {
-                exclude: [
-                    "run_shell_command",
-                    "google_web_search",
-                    "web_fetch",
-                    "browser",
-                    "canvas",
-                    "nodes",
-                    "cron",
-                    "message",
-                    "gateway",
-                    "agents_list",
-                    "sessions_list",
-                    "sessions_history",
-                    "sessions_send",
-                    "sessions_spawn",
-                    "subagents",
-                    "session_status",
-                    "image"
-                ]
-            }
-        };
+    // Handle Robust Tool & Global Settings
+    let settings = {};
+    const baseSettingsPath = path.join(__dirname, '..', 'gemini-settings.json');
+    if (fs.existsSync(baseSettingsPath)) {
         try {
-            fs.writeFileSync(tempSettingsFile, JSON.stringify(settings));
+            settings = JSON.parse(fs.readFileSync(baseSettingsPath, 'utf8'));
+        } catch (err) {
+            console.error('Failed to parse gemini-settings.json:', err);
+        }
+    }
+
+    // API model parameter takes precedence
+    if (options.model && options.model !== 'gemini-cli-bridge') {
+        if (!settings.model) settings.model = {};
+        settings.model.name = options.model;
+    }
+
+    if (!use_native_tools) {
+        if (!settings.tools) settings.tools = {};
+        if (!settings.tools.exclude) settings.tools.exclude = [];
+
+        const nativeTools = [
+            "run_shell_command", "google_web_search", "web_fetch", "browser",
+            "canvas", "nodes", "cron", "message", "gateway", "agents_list",
+            "sessions_list", "sessions_history", "sessions_send", "sessions_spawn",
+            "subagents", "session_status", "image"
+        ];
+
+        nativeTools.forEach(t => {
+            if (!settings.tools.exclude.includes(t)) {
+                settings.tools.exclude.push(t);
+            }
+        });
+    }
+
+    if (tempSettingsFile || !use_native_tools || Object.keys(settings).length > 0) {
+        tempSettingsFile = path.join(os.tmpdir(), `gemini-settings-${id}.json`);
+        try {
+            fs.writeFileSync(tempSettingsFile, JSON.stringify(settings, null, 2));
             env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = tempSettingsFile;
-            console.log(`Native tools blocked via: ${tempSettingsFile}`);
+            console.log(`Gemini CLI settings applied via: ${tempSettingsFile}`);
         } catch (err) {
             console.error('Failed to create temp settings file:', err);
         }
