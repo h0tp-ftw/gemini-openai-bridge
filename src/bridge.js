@@ -47,6 +47,7 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
     let fullResponse = '';
     let stats = null;
     let tempSystemFile = null;
+    let tempSettingsFile = null;
     let toolCallBuffer = '';
     let isBufferingToolCall = false;
 
@@ -66,6 +67,41 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             console.log(`System prompt applied via: ${tempSystemFile}`);
         } catch (err) {
             console.error('Failed to create temp system file:', err);
+        }
+    }
+
+    // Handle Robust Tool Blocking
+    if (!use_native_tools) {
+        tempSettingsFile = path.join(os.tmpdir(), `gemini-settings-${id}.json`);
+        const settings = {
+            tools: {
+                exclude: [
+                    "run_shell_command",
+                    "google_web_search",
+                    "web_fetch",
+                    "browser",
+                    "canvas",
+                    "nodes",
+                    "cron",
+                    "message",
+                    "gateway",
+                    "agents_list",
+                    "sessions_list",
+                    "sessions_history",
+                    "sessions_send",
+                    "sessions_spawn",
+                    "subagents",
+                    "session_status",
+                    "image"
+                ]
+            }
+        };
+        try {
+            fs.writeFileSync(tempSettingsFile, JSON.stringify(settings));
+            env.GEMINI_CLI_SYSTEM_SETTINGS_PATH = tempSettingsFile;
+            console.log(`Native tools blocked via: ${tempSettingsFile}`);
+        } catch (err) {
+            console.error('Failed to create temp settings file:', err);
         }
     }
 
@@ -138,11 +174,15 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
     });
 
     child.on('close', (code) => {
-        if (tempSystemFile && fs.existsSync(tempSystemFile)) {
-            try {
-                fs.unlinkSync(tempSystemFile);
-            } catch (err) { }
-        }
+        // Cleanup temp files
+        const filesToCleanup = [tempSystemFile, tempSettingsFile];
+        filesToCleanup.forEach(f => {
+            if (f && fs.existsSync(f)) {
+                try {
+                    fs.unlinkSync(f);
+                } catch (err) { }
+            }
+        });
 
         if (code !== 0) {
             onError(new Error(`Gemini CLI exited with code ${code}`));
