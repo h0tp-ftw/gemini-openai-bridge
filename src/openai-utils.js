@@ -38,7 +38,36 @@ function formatChatCompletion(id, model, content, usage = null) {
     });
 }
 
+function formatToolCallChunk(id, model, toolCall) {
+    return JSON.stringify({
+        id,
+        object: 'chat.completion.chunk',
+        created: Math.floor(Date.now() / 1000),
+        model,
+        choices: [
+            {
+                index: 0,
+                delta: {
+                    tool_calls: [
+                        {
+                            index: 0,
+                            id: toolCall.id,
+                            type: 'function',
+                            function: {
+                                name: toolCall.name,
+                                arguments: toolCall.arguments
+                            }
+                        }
+                    ]
+                },
+                finish_reason: null
+            }
+        ]
+    });
+}
+
 module.exports = {
     formatChatCompletionChunk,
-    formatChatCompletion
+    formatChatCompletion,
+    formatToolCallChunk
 };

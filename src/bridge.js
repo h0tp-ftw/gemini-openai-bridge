@@ -2,16 +2,41 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const { spawn } = require('cross-spawn');
-const { formatChatCompletionChunk, formatChatCompletion } = require('./openai-utils');
+const { formatChatCompletionChunk, formatChatCompletion, formatToolCallChunk } = require('./openai-utils');
 
 function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
+    const { tools, tool_choice, use_native_tools = false } = options;
+
     // 1. Extract system and user/assistant messages
     const systemMessages = messages.filter(m => m.role === 'system');
     const conversationMessages = messages.filter(m => m.role !== 'system');
 
-    const systemPrompt = systemMessages.map(m => m.content).join('\n\n');
+    let systemPrompt = systemMessages.map(m => m.content).join('\n\n');
+
+    // 2. Inject External Tools and Protocol if provided
+    if (tools && tools.length > 0) {
+        const toolDefs = tools.map(t => {
+            return `- ${t.function.name}: ${t.function.description}. Parameters: ${JSON.stringify(t.function.parameters)}`;
+        }).join('\n');
+
+        const toolProtocol = `
+## Available Tools
+You have access to the following external tools. If you need to use them, output ONLY a JSON block in this format: 
+TOOL_CALL: {"id": "unique_id", "name": "function_name", "arguments": "{\\"arg1\\": \\"val\\"}"}
+
+Tools:
+${toolDefs}
+
+${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT use your native tools like Bash or Google Search.'}
+`;
+        systemPrompt = systemPrompt ? `${systemPrompt}\n\n${toolProtocol}` : toolProtocol;
+    }
+
     const prompt = conversationMessages
         .map(m => {
+            if (m.role === 'tool') {
+                return `Tool Result (id: ${m.tool_call_id}): ${m.content}`;
+            }
             const role = m.role === 'user' ? 'User' : 'Assistant';
             return `${role}: ${m.content}`;
         })
@@ -22,8 +47,10 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
     let fullResponse = '';
     let stats = null;
     let tempSystemFile = null;
+    let toolCallBuffer = '';
+    let isBufferingToolCall = false;
 
-    // 2. Prepare environment and arguments
+    // 3. Prepare environment and arguments
     const env = { ...process.env, NO_COLOR: '1' };
     const args = [
         '-p', prompt,
@@ -43,7 +70,7 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
     }
 
     const geminiPath = 'C:\\Users\\h0tp\\AppData\\Local\\Volta\\bin\\gemini.cmd';
-    console.log(`Spawning ${geminiPath} with prompt: ${prompt.substring(0, 50)}...`);
+    console.log(`Spawning ${geminiPath}...`);
 
     const child = spawn(geminiPath, args, {
         stdio: ['inherit', 'pipe', 'pipe'],
@@ -57,8 +84,45 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
             try {
                 const json = JSON.parse(line);
                 if (json.type === 'message' && json.role === 'assistant' && json.content) {
-                    fullResponse += json.content;
-                    onChunk(formatChatCompletionChunk(id, model, json.content));
+                    const content = json.content;
+
+                    if (isBufferingToolCall) {
+                        toolCallBuffer += content;
+                        // Check if the JSON block is potentially closed
+                        if (toolCallBuffer.trim().endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                            } catch (e) {
+                                // Still not complete or invalid JSON, keep buffering
+                            }
+                        }
+                    } else if (content.includes('TOOL_CALL:')) {
+                        const parts = content.split('TOOL_CALL:');
+                        // Content before TOOL_CALL is normal text
+                        if (parts[0].trim()) {
+                            fullResponse += parts[0];
+                            onChunk(formatChatCompletionChunk(id, model, parts[0]));
+                        }
+
+                        isBufferingToolCall = true;
+                        toolCallBuffer = parts[1].trim();
+
+                        // Check if it's already complete in one chunk
+                        if (toolCallBuffer.endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                            } catch (e) { }
+                        }
+                    } else {
+                        fullResponse += content;
+                        onChunk(formatChatCompletionChunk(id, model, content));
+                    }
                 } else if (json.type === 'result' && json.stats) {
                     stats = json.stats;
                 }
@@ -70,18 +134,14 @@ function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
 
     child.stderr.on('data', (data) => {
         const msg = data.toString();
-        console.error(`Gemini CLI Error: ${msg}`);
+        process.stderr.write(`Gemini CLI Error: ${msg}\n`);
     });
 
     child.on('close', (code) => {
-        // 3. Cleanup temp file
         if (tempSystemFile && fs.existsSync(tempSystemFile)) {
             try {
                 fs.unlinkSync(tempSystemFile);
-                console.log(`Cleaned up temp system file: ${tempSystemFile}`);
-            } catch (err) {
-                console.error('Failed to delete temp system file:', err);
-            }
+            } catch (err) { }
         }
 
         if (code !== 0) {

@@ -7,7 +7,7 @@ const { formatChatCompletionChunk, formatChatCompletion } = require('./src/opena
 fastify.register(cors, { origin: '*' });
 
 fastify.post('/v1/chat/completions', async (request, reply) => {
-    const { messages, stream, model } = request.body;
+    const { messages, stream, model, tools, tool_choice, use_native_tools } = request.body;
 
     if (!messages || !Array.isArray(messages)) {
         return reply.status(400).send({ error: 'Invalid messages' });
@@ -20,7 +20,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
 
         runGeminiBridge(
             messages,
-            { model },
+            { model, tools, tool_choice, use_native_tools },
             (chunk) => {
                 reply.raw.write(`data: ${chunk}\n\n`);
             },
@@ -62,7 +62,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
         return new Promise((resolve, reject) => {
             runGeminiBridge(
                 messages,
-                { model },
+                { model, tools, tool_choice, use_native_tools },
                 (chunk) => {
                     // Ignore chunks in non-streaming mode
                 },
