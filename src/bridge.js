@@ -84,10 +84,9 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         }
     }
 
-    // API model parameter takes precedence
+    // Map selection to GEMINI_MODEL env var
     if (options.model && options.model !== 'gemini-cli-bridge') {
-        if (!settings.model) settings.model = {};
-        settings.model.name = options.model;
+        env.GEMINI_MODEL = options.model;
     }
 
     // Map generation parameters
