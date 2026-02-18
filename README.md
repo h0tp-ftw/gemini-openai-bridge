@@ -1,6 +1,6 @@
-# Gemini CLI to OpenAI Bridge
+# gemini-openai-bridge
 
-This project provides an OpenAI-compatible API endpoint that routes requests to the `gemini` CLI tool. It allows you to use `gemini` as a drop-in replacement for OpenAI in many tools and integrations.
+An OpenAI-compatible API bridge for the Gemini CLI. Express-based (Fastify) local server that translates v1/chat/completions to headless Gemini CLI calls.
 
 ## Prerequisites
 
@@ -41,3 +41,7 @@ curl http://localhost:3000/v1/chat/completions \
 - **Request Translation**: OpenAI `messages` are combined into a single prompt for the Gemini CLI.
 - **Process Management**: Spawns `gemini -p <prompt> --output-format stream-json --yolo` in the background.
 - **Response Translation**: Translates Gemini's periodic JSON updates into OpenAI Server-Sent Events (SSE).
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
