@@ -1,7 +1,11 @@
 const fs = require('fs');
 const path = require('path');
 
-function formatChatCompletionChunk(id, model, content, finishReason = null) {
+function formatChatCompletionChunk(id, model, content, finishReason = null, role = null) {
+    const delta = {};
+    if (role) delta.role = role;
+    if (content) delta.content = content;
+
     return JSON.stringify({
         id,
         object: 'chat.completion.chunk',
@@ -10,14 +14,30 @@ function formatChatCompletionChunk(id, model, content, finishReason = null) {
         choices: [
             {
                 index: 0,
-                delta: content ? { content } : {},
+                delta,
                 finish_reason: finishReason
             }
         ]
     });
 }
 
-function formatChatCompletion(id, model, content, usage = null) {
+function formatChatCompletion(id, model, content, usage = null, toolCalls = null) {
+    const message = {
+        role: 'assistant',
+        content: content || null
+    };
+
+    if (toolCalls && toolCalls.length > 0) {
+        message.tool_calls = toolCalls.map((tc, idx) => ({
+            id: tc.id || `call_${Math.random().toString(36).substring(7)}`,
+            type: 'function',
+            function: {
+                name: tc.name,
+                arguments: typeof tc.arguments === 'string' ? tc.arguments : JSON.stringify(tc.arguments)
+            }
+        }));
+    }
+
     return JSON.stringify({
         id,
         object: 'chat.completion',
@@ -26,11 +46,8 @@ function formatChatCompletion(id, model, content, usage = null) {
         choices: [
             {
                 index: 0,
-                message: {
-                    role: 'assistant',
-                    content: content
-                },
-                finish_reason: 'stop'
+                message: message,
+                finish_reason: (toolCalls && toolCalls.length > 0) ? 'tool_calls' : 'stop'
             }
         ],
         usage: usage || {
@@ -41,7 +58,9 @@ function formatChatCompletion(id, model, content, usage = null) {
     });
 }
 
-function formatToolCallChunk(id, model, toolCall) {
+function formatToolCallChunk(id, model, toolCall, index = 0) {
+    const args = typeof toolCall.arguments === 'string' ? toolCall.arguments : JSON.stringify(toolCall.arguments);
+
     return JSON.stringify({
         id,
         object: 'chat.completion.chunk',
@@ -53,12 +72,12 @@ function formatToolCallChunk(id, model, toolCall) {
                 delta: {
                     tool_calls: [
                         {
-                            index: 0,
+                            index,
                             id: toolCall.id,
                             type: 'function',
                             function: {
                                 name: toolCall.name,
-                                arguments: toolCall.arguments
+                                arguments: args
                             }
                         }
                     ]
@@ -71,13 +90,26 @@ function formatToolCallChunk(id, model, toolCall) {
 
 function formatModelsList() {
     let previewEnabled = false;
+    let customModels = [];
     try {
         const settingsPath = path.join(__dirname, '..', 'gemini-settings.json');
         if (fs.existsSync(settingsPath)) {
             const settings = JSON.parse(fs.readFileSync(settingsPath, 'utf8'));
             previewEnabled = settings.general?.previewFeatures === true;
+            if (Array.isArray(settings.models)) {
+                customModels = settings.models.map(m => ({
+                    id: m.id,
+                    object: 'model',
+                    created: m.created || 1740000000,
+                    owned_by: m.owned_by || 'google'
+                }));
+            }
         }
     } catch (e) { }
+
+    if (customModels.length > 0) {
+        return JSON.stringify({ object: 'list', data: customModels });
+    }
 
     const models = [
         { id: 'auto-gemini-2.5', object: 'model', created: 1740000000, owned_by: 'google' },
@@ -106,8 +138,14 @@ function formatResponse(id, model, content, usage = null) {
         model,
         output: [
             {
-                type: 'text',
-                text: content
+                type: 'message',
+                role: 'assistant',
+                content: [
+                    {
+                        type: 'output_text',
+                        text: content
+                    }
+                ]
             }
         ],
         usage: usage || {

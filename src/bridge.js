@@ -9,50 +9,55 @@ const fileManager = require('./file-manager');
 async function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
     const {
         tools, tool_choice, use_native_tools = false,
-        temperature, max_tokens, top_p, stop
+        temperature, max_tokens, top_p, stop,
+        sessionId: inputSessionId, sessionCount = 0,
+        response_format, max_completion_tokens
     } = options;
 
     const cleanupQueue = [];
     const id = `chatcmpl-${Math.random().toString(36).substring(7)}`;
 
-    // Helper to add transient images to cleanup queue
-    const handleTransientImage = async (data, isBase64 = false) => {
-        let extension = '.png'; // Default
+    // Helper to add transient files to cleanup queue
+    const handleTransientFile = async (data, isBase64 = false) => {
+        let extension = '';
         let buffer;
 
         if (isBase64) {
-            const mimeMatch = data.match(/^data:(image\/\w+);base64,/);
+            const mimeMatch = data.match(/^data:([^;]+);base64,/);
             if (mimeMatch) {
                 const mime = mimeMatch[1];
-                if (mime.includes('jpeg') || mime.includes('jpg')) extension = '.jpg';
-                else if (mime.includes('gif')) extension = '.gif';
-                else if (mime.includes('webp')) extension = '.webp';
+                const ext = mime.split('/').pop();
+                extension = ext ? `.${ext}` : '';
             }
-            const base64Data = data.replace(/^data:image\/\w+;base64,/, "");
+            const base64Data = data.replace(/^data:[^;]+;base64,/, "");
             buffer = Buffer.from(base64Data, 'base64');
         } else {
             const response = await axios.get(data, { responseType: 'arraybuffer' });
             buffer = Buffer.from(response.data);
-            const contentType = response.headers['content-type'];
-            if (contentType) {
-                if (contentType.includes('jpeg') || contentType.includes('jpg')) extension = '.jpg';
-                else if (contentType.includes('gif')) extension = '.gif';
-                else if (contentType.includes('webp')) extension = '.webp';
-                else if (contentType.includes('png')) extension = '.png';
-            }
+            const urlExt = path.extname(new URL(data).pathname);
+            extension = urlExt || '';
         }
 
-        const tempPath = path.join(os.tmpdir(), `gemini-vision-${id}-${Math.random().toString(36).substring(7)}${extension}`);
+        const tempPath = path.join(os.tmpdir(), `gemini-file-${id}-${Math.random().toString(36).substring(7)}${extension}`);
         fs.writeFileSync(tempPath, buffer);
         cleanupQueue.push(tempPath);
         return `@${tempPath}`;
     };
 
+    let hasEmittedToolCall = false;
+
     // 1. Extract system and user/assistant messages
     const systemMessages = messages.filter(m => m.role === 'system');
-    const conversationMessages = messages.filter(m => m.role !== 'system');
-
     let systemPrompt = systemMessages.map(m => m.content).join('\n\n');
+
+    // 2. Smart Resume: Slice messages to only include new ones if resuming
+    let conversationMessages = messages;
+    if (inputSessionId && sessionCount > 0 && messages.length > sessionCount) {
+        conversationMessages = messages.slice(sessionCount);
+    }
+
+    // Filter out system messages from the conversation part (they are handled via env var)
+    conversationMessages = conversationMessages.filter(m => m.role !== 'system');
 
     // 2. Inject External Tools and Protocol if provided
     if (tools && tools.length > 0) {
@@ -73,6 +78,12 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         systemPrompt = systemPrompt ? `${systemPrompt}\n\n${toolProtocol}` : toolProtocol;
     }
 
+    // JSON Mode Support
+    if (response_format && response_format.type === 'json_object') {
+        const jsonInstruction = `\nIMPORTANT: You MUST respond with a valid JSON object. Do not include any other text, markdown blocks, or explanations outside the JSON.`;
+        systemPrompt = systemPrompt ? `${systemPrompt}${jsonInstruction}` : jsonInstruction.trim();
+    }
+
     try {
         const fileAttachments = [];
         const conversationParts = await Promise.all(conversationMessages.map(async (m) => {
@@ -80,10 +91,23 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             if (Array.isArray(m.content)) {
                 for (const c of m.content) {
                     if (c.type === 'text') contentParts.push(c.text);
-                    else if (c.type === 'image_url') {
-                        const url = typeof c.image_url === 'string' ? c.image_url : c.image_url.url;
+                    else if (c.type === 'image_url' || c.type === 'file' || c.type === 'input_file') {
+                        const url = (c.type === 'image_url')
+                            ? (typeof c.image_url === 'string' ? c.image_url : c.image_url.url)
+                            : (c.file?.url || c.input_file?.url || c.file?.data || c.input_file?.data);
 
-                        // Check for persistent file-xxxx
+                        if (!url && (c.file?.file_id || c.input_file?.file_id)) {
+                            const fileId = c.file?.file_id || c.input_file?.file_id;
+                            const localPath = fileManager.getFilePath(fileId);
+                            if (localPath) {
+                                fileAttachments.push(`@${localPath}`);
+                                continue;
+                            }
+                        }
+
+                        if (!url) continue;
+
+                        // Check for persistent file-xxxx in URL
                         const fileIdMatch = url.match(/file-[a-f0-9]{16}/);
                         if (fileIdMatch) {
                             const localPath = fileManager.getFilePath(fileIdMatch[0]);
@@ -95,18 +119,18 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
 
                         // Check for base64 or remote URL
                         try {
-                            if (url.startsWith('data:image')) {
-                                const path = await handleTransientImage(url, true);
+                            if (url.startsWith('data:')) {
+                                const path = await handleTransientFile(url, true);
                                 fileAttachments.push(path);
                             } else if (url.startsWith('http')) {
-                                const path = await handleTransientImage(url, false);
+                                const path = await handleTransientFile(url, false);
                                 fileAttachments.push(path);
                             } else {
-                                contentParts.push(`[Image: ${url}]`);
+                                contentParts.push(`[File: ${url}]`);
                             }
                         } catch (err) {
                             console.error('Failed to handle vision image:', err.message);
-                            contentParts.push(`[Image Error: ${url}]`);
+                            contentParts.push(`[File Error: ${url}]`);
                         }
                     }
                 }
@@ -129,8 +153,21 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             if (m.role === 'tool') {
                 return `Tool Result (id: ${m.tool_call_id}): ${content}`;
             }
+
+            let assistantContent = content;
+            if (m.role === 'assistant' && m.tool_calls && Array.isArray(m.tool_calls)) {
+                const toolCallsStr = m.tool_calls.map(tc => {
+                    return `TOOL_CALL: ${JSON.stringify({
+                        id: tc.id,
+                        name: tc.function?.name || tc.name,
+                        arguments: tc.function?.arguments || tc.arguments
+                    })}`;
+                }).join('\n');
+                assistantContent = assistantContent ? `${assistantContent}\n${toolCallsStr}` : toolCallsStr;
+            }
+
             const role = m.role === 'user' ? 'User' : 'Assistant';
-            return `${role}: ${content}`;
+            return `${role}: ${assistantContent}`;
         }));
 
         // Deduplicate attachments
@@ -140,10 +177,13 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         const model = options.model || 'gemini-cli-bridge';
         let fullResponse = '';
         let stats = null;
+        let sessionId = inputSessionId || null;
+        let isResumed = !!sessionId;
         let tempSystemFile = null;
         let tempSettingsFile = null;
         let toolCallBuffer = '';
         let isBufferingToolCall = false;
+        const toolCalls = [];
 
         // 3. Prepare environment and arguments
         const env = { ...process.env, NO_COLOR: '1' };
@@ -152,6 +192,14 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             '--output-format', 'stream-json',
             '--yolo'
         ];
+
+        if (sessionId) {
+            args.push('--resume', sessionId);
+        }
+
+        // If explicitly requested JSON mode and we aren't streaming, we could use --output-format json
+        // but stream-json is more robust for us as we have the parser loop already.
+        // We'll stick to stream-json and rely on the system prompt injection.
 
         if (systemPrompt) {
             tempSystemFile = path.join(os.tmpdir(), `gemini-system-${id}.md`);
@@ -188,9 +236,16 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         const genConfig = settings.model.modelConfig.generateContentConfig;
         if (typeof temperature === 'number') genConfig.temperature = temperature;
         if (typeof top_p === 'number') genConfig.topP = top_p;
-        if (typeof max_tokens === 'number') genConfig.maxOutputTokens = max_tokens;
+
+        const effectiveMaxTokens = max_tokens ?? max_completion_tokens;
+        if (typeof effectiveMaxTokens === 'number') genConfig.maxOutputTokens = effectiveMaxTokens;
+
         if (stop) {
             genConfig.stopSequences = Array.isArray(stop) ? stop : [stop];
+        }
+
+        if (response_format && response_format.type === 'json_object') {
+            genConfig.responseMimeType = "application/json";
         }
 
         if (!use_native_tools) {
@@ -222,15 +277,23 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             }
         }
 
-        const voltaPath = 'C:\\Users\\h0tp\\AppData\\Local\\Volta\\bin\\gemini.cmd';
-        const geminiPath = fs.existsSync(voltaPath) ? voltaPath : 'gemini';
-        console.log(`Spawning Gemini CLI via path: ${geminiPath} (shell: false)`);
+        const voltaPath = path.join(os.homedir(), 'AppData', 'Local', 'Volta', 'bin', 'gemini.cmd');
+        const geminiPath = process.env.GEMINI_CLI_PATH || (fs.existsSync(voltaPath) ? voltaPath : 'gemini');
+        console.log(`Spawning Gemini CLI via path: ${geminiPath}`);
 
         const child = spawn(geminiPath, args, {
-            stdio: ['inherit', 'pipe', 'pipe'],
+            stdio: ['ignore', 'pipe', 'pipe'],
             env,
             shell: false
         });
+
+        // Request Timeout (2 minutes default)
+        const TIMEOUT_MS = parseInt(process.env.BRIDGE_TIMEOUT_MS) || 120000;
+        const timeout = setTimeout(() => {
+            console.error(`Request timed out after ${TIMEOUT_MS / 1000}s. Killing process ${child.pid}`);
+            child.kill();
+            onError(new Error(`Gemini CLI request timed out after ${TIMEOUT_MS / 1000}s`));
+        }, TIMEOUT_MS);
 
         const readline = require('readline');
         const rl = readline.createInterface({
@@ -242,6 +305,10 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             if (!line.trim()) return;
             try {
                 const json = JSON.parse(line);
+                if (json.type === 'init' && json.session_id) {
+                    sessionId = json.session_id;
+                }
+
                 if (json.type === 'message' && json.role === 'assistant' && json.content) {
                     const content = json.content;
 
@@ -251,9 +318,11 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
                         if (toolCallBuffer.trim().endsWith('}')) {
                             try {
                                 const toolCall = JSON.parse(toolCallBuffer);
-                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                onChunk(formatToolCallChunk(id, model, toolCall, toolCalls.length));
                                 isBufferingToolCall = false;
                                 toolCallBuffer = '';
+                                hasEmittedToolCall = true;
+                                toolCalls.push(toolCall);
                             } catch (e) {
                                 // Still not complete or invalid JSON, keep buffering
                             }
@@ -273,9 +342,11 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
                         if (toolCallBuffer.endsWith('}')) {
                             try {
                                 const toolCall = JSON.parse(toolCallBuffer);
-                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                onChunk(formatToolCallChunk(id, model, toolCall, toolCalls.length));
                                 isBufferingToolCall = false;
                                 toolCallBuffer = '';
+                                hasEmittedToolCall = true;
+                                toolCalls.push(toolCall);
                             } catch (e) { }
                         }
                     } else {
@@ -288,10 +359,39 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             } catch (e) {
                 // Not JSON - might be raw text from Gemini (thoughts, plans, etc.)
                 if (line.includes('TOOL_CALL:') || isBufferingToolCall) {
-                    // ... (keep tool call handling if needed, or just treat as text if it fails parsing)
-                    // existing logic for tool calls is inside this block which I'm not overwriting fully
-                    // actually I need to be careful not to break the existing tool handling logic if I rewrite the catch block.
-                    // The previous logic was empty for the else case.
+                    // Mirror the logic from above but for 'line' instead of 'content'
+                    const content = line;
+                    if (isBufferingToolCall) {
+                        toolCallBuffer += content;
+                        if (toolCallBuffer.trim().endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall, toolCalls.length));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                                hasEmittedToolCall = true;
+                                toolCalls.push(toolCall);
+                            } catch (e) { }
+                        }
+                    } else if (content.includes('TOOL_CALL:')) {
+                        const parts = content.split('TOOL_CALL:');
+                        if (parts[0].trim()) {
+                            fullResponse += parts[0];
+                            onChunk(formatChatCompletionChunk(id, model, parts[0]));
+                        }
+                        isBufferingToolCall = true;
+                        toolCallBuffer = parts[1].trim();
+                        if (toolCallBuffer.endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall, toolCalls.length));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                                hasEmittedToolCall = true;
+                                toolCalls.push(toolCall);
+                            } catch (e) { }
+                        }
+                    }
                 } else {
                     // Treat raw text as content
                     const text = line + '\n';
@@ -332,10 +432,17 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
 
                 if (exitCode !== 0 && exitCode !== null) {
                     onError(new Error(`Gemini CLI exited with code ${exitCode}. Check if it is installed and authenticated.`));
-                } else if (fullResponse || stats) {
-                    onEnd(id, model, fullResponse, stats);
+                } else if (fullResponse || stats || hasEmittedToolCall) {
+                    // Post-process JSON mode to strip markdown blocks if present
+                    if (response_format && response_format.type === 'json_object' && fullResponse) {
+                        fullResponse = fullResponse.trim();
+                        if (fullResponse.startsWith('```')) {
+                            fullResponse = fullResponse.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
+                        }
+                    }
+                    onEnd(id, model, fullResponse, stats, hasEmittedToolCall, toolCalls, sessionId);
                 } else {
-                    onEnd(id, model, "", null);
+                    onEnd(id, model, "", null, false, [], sessionId);
                 }
             }
         };
@@ -346,6 +453,7 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         });
 
         child.on('close', (code) => {
+            clearTimeout(timeout);
             isChildClosed = true;
             exitCode = code;
             maybeEnd();

@@ -1,12 +1,12 @@
 # gemini-openai-bridge
 
-An OpenAI-compatible API bridge for the Gemini CLI. Express-based (Fastify) local server that translates v1/chat/completions to headless Gemini CLI calls.
+An OpenAI-compatible API bridge for the Gemini CLI. Fastify-based local server that translates v1/chat/completions to headless Gemini CLI calls.
 
 ## Prerequisites
 
 - Node.js installed.
 - `@google/gemini-cli` installed and authenticated on your system.
-- `gemini` command available in your PATH (or configured in `src/bridge.js`).
+- `gemini` command available in your PATH.
 
 ## Installation
 
@@ -16,69 +16,60 @@ An OpenAI-compatible API bridge for the Gemini CLI. Express-based (Fastify) loca
    npm install
    ```
 
+## Configuration
+
+### 1. API Key (Optional)
+By default, the bridge is open. To secure it, generate a key:
+```bash
+node generate-key.js
+```
+This adds `BRIDGE_API_KEY=sk-gemini-...` to your `.env`. Clients must then send `Authorization: Bearer sk-gemini-...`.
+
+### 2. Available Models
+Configure models in `gemini-settings.json` to customize the `/v1/models` list:
+```json
+{
+  "models": [
+    { "id": "gemini-2.5-pro" },
+    { "id": "gemini-2.5-flash" }
+  ]
+}
+```
+
 ## Usage
 
-1. Start the server:
-   ```bash
-   node index.js
-   ```
-### Available Endpoints
-
-- `GET /v1/models`: Lists the available Gemini models.
-- `POST /v1/chat/completions`: The standard OpenAI chat completion endpoint (Streaming & Non-Streaming).
-- `POST /v1/responses`: Modern OpenAI Responses API endpoint, used by late-model SDKs like **Vercel AI SDK**.
-- `GET/POST /v1/files`: Basic support for OpenAI-style file management (Gemini CLI backend).
-
-## Compatible Toolsets
-
-This bridge is tested and confirms compatibility with:
-*   **Vercel AI SDK** (`@ai-sdk/openai`)
-*   **opencode**
-*   **VS Code: Continue**
-*   **VS Code: Cline / Roo Code**
-*   **Cursor**
-
-## Example CURLs
-
-### Chat Completions
+Start the server:
 ```bash
-curl http://localhost:3000/v1/chat/completions \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gemini-2.5-flash",
-    "messages": [{"role": "user", "content": "Say hello!"}],
-    "stream": true
-  }'
+node index.js
 ```
 
-### Responses API (Modern SDKs)
-```bash
-curl http://localhost:3000/v1/responses \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "gemini-2.5-flash",
-    "input": "How does the bridge work?"
-  }'
+### Endpoints
+
+- `GET /v1/models`: Lists Gemini models.
+- `POST /v1/chat/completions`: Standard chat endpoint (Streaming & Non-Streaming).
+- `POST /v1/responses`: Modern Responses API.
+- `GET/POST/DELETE /v1/files`: Complete OpenAI-style file management.
+- `GET /v1/files/:id/content`: Download uploaded file content.
+
+### Multi-turn Conversations (Sessions)
+
+To maintain context across separate API calls, send a `conversation_id` in your request body:
+```json
+{
+  "model": "gemini-2.0-flash",
+  "conversation_id": "unique-session-123",
+  "messages": [{"role": "user", "content": "What did I just say?"}]
+}
 ```
+The bridge maps this to a Gemini CLI session ID and uses `--resume`. This enables **Automatic Context Caching** on the Gemini backend.
 
 ## How it works
 
-- **Robust Processing**: Uses `readline` to handle streamed output from Gemini CLI without race conditions.
-- **OpenAI Compliance**: Returns standardized error objects and usage statistics (including caching info).
-- **Request Translation**: OpenAI `messages` or `input` are combined into a single prompt for the Gemini CLI.
-- **Process Management**: Spawns `gemini.cmd` (on Windows) in the background with `--output-format stream-json`.
-
-## Automatic Caching
-
-One of the most powerful features of using the Gemini CLI as a backend is **Automatic Context Caching**. 
-
-As you continue a conversation through this bridge, the Gemini CLI automatically caches the context of your previous messages. This means:
-- **Zero Configuration**: No need to manually manage cache TTLs or IDs.
-- **Lower Latency**: Follow-up questions are processed significantly faster.
-- **Cost Efficiency**: You only pay for the full input once; subsequent turns use the cache.
-
-The bridge captures these caching statistics and reports them back in the standard OpenAI `usage` object.
+- **Generic File Handling**: Any file attached as base64 or URL is saved to temp and passed to Gemini CLI via `@path`. Supports image, PDF, text, etc.
+- **Robust Processing**: Uses `readline` to handle streamed output without race conditions.
+- **Timeouts**: CLI processes are killed after 120s (configurable via `BRIDGE_TIMEOUT_MS`) to prevent hanging.
+- **JSON Mode**: Supports `response_format: { type: "json_object" }` by forcing JSON output.
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License - see [LICENSE](LICENSE) for details.

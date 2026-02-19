@@ -26,3 +26,4 @@ streaming_stats.txt
 bridge_debug*.log
 debug-server*.log
 server.*.log
+sessions.json
