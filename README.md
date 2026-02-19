@@ -22,25 +22,51 @@ An OpenAI-compatible API bridge for the Gemini CLI. Express-based (Fastify) loca
    ```bash
    node index.js
    ```
-2. The endpoint will be available at `http://localhost:3000/v1/chat/completions`.
+### Available Endpoints
 
-## Example CURL (Streaming)
+- `GET /v1/models`: Lists the available Gemini models.
+- `POST /v1/chat/completions`: The standard OpenAI chat completion endpoint (Streaming & Non-Streaming).
+- `POST /v1/responses`: Modern OpenAI Responses API endpoint, used by late-model SDKs like **Vercel AI SDK**.
+- `GET/POST /v1/files`: Basic support for OpenAI-style file management (Gemini CLI backend).
 
+## Compatible Toolsets
+
+This bridge is tested and confirms compatibility with:
+*   **Vercel AI SDK** (`@ai-sdk/openai`)
+*   **opencode**
+*   **VS Code: Continue**
+*   **VS Code: Cline / Roo Code**
+*   **Cursor**
+
+## Example CURLs
+
+### Chat Completions
 ```bash
 curl http://localhost:3000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
-    "model": "gemini-pro",
+    "model": "gemini-2.5-flash",
     "messages": [{"role": "user", "content": "Say hello!"}],
     "stream": true
   }'
 ```
 
+### Responses API (Modern SDKs)
+```bash
+curl http://localhost:3000/v1/responses \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "gemini-2.5-flash",
+    "input": "How does the bridge work?"
+  }'
+```
+
 ## How it works
 
-- **Request Translation**: OpenAI `messages` are combined into a single prompt for the Gemini CLI.
-- **Process Management**: Spawns `gemini -p <prompt> --output-format stream-json --yolo` in the background.
-- **Response Translation**: Translates Gemini's periodic JSON updates into OpenAI Server-Sent Events (SSE).
+- **Robust Processing**: Uses `readline` to handle streamed output from Gemini CLI without race conditions.
+- **OpenAI Compliance**: Returns standardized error objects and usage statistics (including caching info).
+- **Request Translation**: OpenAI `messages` or `input` are combined into a single prompt for the Gemini CLI.
+- **Process Management**: Spawns `gemini.cmd` (on Windows) in the background with `--output-format stream-json`.
 
 ## Automatic Caching
 
