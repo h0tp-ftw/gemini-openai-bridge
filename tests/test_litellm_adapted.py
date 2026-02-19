@@ -57,7 +57,7 @@ async def test_chat_completion_simple():
     async with aiohttp.ClientSession() as session:
         # We skip key generation and user creation as they are not supported by this bridge
         # We use the static key and base url
-        await chat_completion(session=session, key=API_KEY, model="gemini-2.0-flash")
+        await chat_completion(session=session, key=API_KEY, model="gemini-2.5-flash-lite")
 
 @pytest.mark.asyncio
 async def test_chat_completion_streaming():
@@ -69,7 +69,7 @@ async def test_chat_completion_streaming():
 
     try:
         response = await client.chat.completions.create(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash-lite",
             messages=[{"role": "user", "content": "Hello!"}],
             # logprobs=True, # Commenting out as likely unsupported by the bridge implementation currently
             # top_logprobs=2,
@@ -107,7 +107,7 @@ async def test_completion_streaming_usage_metrics():
         # Let's try to adapt to chat completions as that's what the bridge definitely supports.
         
         response = await client.chat.completions.create(
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash-lite",
             messages=[{"role": "user", "content": "Count to 3"}],
             stream=True,
             stream_options={"include_usage": True},

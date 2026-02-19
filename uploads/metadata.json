@@ -17,6 +17,15 @@
       "filename": "secret.txt",
       "purpose": "user_data",
       "local_path": "C:\\Users\\h0tp\\Documents\\Code\\gemini-cli-openai\\uploads\\file-9dc5ebda7da0307f-secret.txt"
+    },
+    "file-44dc5fd0024507dc": {
+      "id": "file-44dc5fd0024507dc",
+      "object": "file",
+      "bytes": 18,
+      "created_at": 1771522149,
+      "filename": "test_data.txt",
+      "purpose": "user_data",
+      "local_path": "C:\\Users\\h0tp\\Documents\\Code\\gemini-cli-openai\\uploads\\file-44dc5fd0024507dc-test_data.txt"
     }
   }
 }

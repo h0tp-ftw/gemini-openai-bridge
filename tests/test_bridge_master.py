@@ -5,9 +5,9 @@ import os
 from openai import OpenAI, AsyncOpenAI
 
 # Configuration
-API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:3000/v1")
+API_BASE = os.getenv("OPENAI_API_BASE", "http://localhost:3001/v1")
 API_KEY = os.getenv("OPENAI_API_KEY", "test-key")
-MODEL = "gemini-2.0-flash" # Use a known model
+MODEL = "gemini-2.5-flash-lite" # Use a known model
 
 @pytest.fixture
 def client():

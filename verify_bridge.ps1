@@ -3,7 +3,7 @@ Write-Host "Models Response:"
 $response | ConvertTo-Json -Depth 5
 
 $chatBody = @{
-    model = "gemini-2.0-flash-thinking-exp-1219"
+    model = "gemini-2.5-flash-lite"
     messages = @(
         @{ role = "user"; content = "Hello" }
     )
