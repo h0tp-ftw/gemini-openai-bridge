@@ -14,3 +14,15 @@ test-endpoint.js
 test-final.js
 cli_raw.log
 debug.log
+
+# Temporary and test files
+tmp/
+*.txt
+.pytest_cache/
+__pycache__/
+test_output.txt
+test_results.txt
+streaming_stats.txt
+bridge_debug*.log
+debug-server*.log
+server.*.log

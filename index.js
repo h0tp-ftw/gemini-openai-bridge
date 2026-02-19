@@ -9,6 +9,16 @@ const fileManager = require('./src/file-manager');
 fastify.register(cors, { origin: '*' });
 fastify.register(multipart);
 
+fastify.addHook('preHandler', (request, reply, done) => {
+    request.log.info({
+        method: request.method,
+        url: request.url,
+        body: request.body,
+        headers: request.headers
+    }, 'INCOMING REQUEST DUMP');
+    done();
+});
+
 fastify.get('/v1/models', async (request, reply) => {
     return JSON.parse(formatModelsList());
 });

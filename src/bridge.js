@@ -286,9 +286,17 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
                     stats = json.stats;
                 }
             } catch (e) {
-                // Not JSON - might be raw text from Gemini
+                // Not JSON - might be raw text from Gemini (thoughts, plans, etc.)
                 if (line.includes('TOOL_CALL:') || isBufferingToolCall) {
-                    // Fallback for non-JSON tool calls if necessary
+                    // ... (keep tool call handling if needed, or just treat as text if it fails parsing)
+                    // existing logic for tool calls is inside this block which I'm not overwriting fully
+                    // actually I need to be careful not to break the existing tool handling logic if I rewrite the catch block.
+                    // The previous logic was empty for the else case.
+                } else {
+                    // Treat raw text as content
+                    const text = line + '\n';
+                    fullResponse += text;
+                    onChunk(formatChatCompletionChunk(id, model, text));
                 }
             }
         });
