@@ -3,6 +3,7 @@ const path = require('path');
 const os = require('os');
 const { spawn } = require('cross-spawn');
 const { formatChatCompletionChunk, formatChatCompletion, formatToolCallChunk } = require('./openai-utils');
+const fileManager = require('./file-manager');
 
 function runGeminiBridge(messages, options, onChunk, onEnd, onError) {
     const {
@@ -37,11 +38,36 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
 
     const prompt = conversationMessages
         .map(m => {
+            let content = '';
+            if (Array.isArray(m.content)) {
+                content = m.content.map(c => {
+                    if (c.type === 'text') return c.text;
+                    if (c.type === 'image_url') {
+                        const url = typeof c.image_url === 'string' ? c.image_url : c.image_url.url;
+                        const fileIdMatch = url.match(/file-[a-f0-9]{16}/);
+                        if (fileIdMatch) {
+                            const localPath = fileManager.getFilePath(fileIdMatch[0]);
+                            if (localPath) return `@${localPath}`;
+                        }
+                        return `[Image: ${url}]`;
+                    }
+                    return '';
+                }).filter(Boolean).join('\n');
+            } else {
+                content = m.content || '';
+                // Resolve file-xxxx IDs in string content
+                const fileIdRegex = /file-[a-f0-9]{16}/g;
+                content = content.replace(fileIdRegex, (id) => {
+                    const localPath = fileManager.getFilePath(id);
+                    return localPath ? `@${localPath}` : id;
+                });
+            }
+
             if (m.role === 'tool') {
-                return `Tool Result (id: ${m.tool_call_id}): ${m.content}`;
+                return `Tool Result (id: ${m.tool_call_id}): ${content}`;
             }
             const role = m.role === 'user' ? 'User' : 'Assistant';
-            return `${role}: ${m.content}`;
+            return `${role}: ${content}`;
         })
         .join('\n\n');
 

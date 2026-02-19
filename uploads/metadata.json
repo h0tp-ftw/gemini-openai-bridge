@@ -1,0 +1,22 @@
+{
+  "files": {
+    "file-330deefd89c095fe": {
+      "id": "file-330deefd89c095fe",
+      "object": "file",
+      "bytes": 35,
+      "created_at": 1771468610,
+      "filename": "test-asset.txt",
+      "purpose": "user_data",
+      "local_path": "C:\\Users\\h0tp\\Documents\\Code\\gemini-cli-openai\\uploads\\file-330deefd89c095fe-test-asset.txt"
+    },
+    "file-9dc5ebda7da0307f": {
+      "id": "file-9dc5ebda7da0307f",
+      "object": "file",
+      "bytes": 39,
+      "created_at": 1771468616,
+      "filename": "secret.txt",
+      "purpose": "user_data",
+      "local_path": "C:\\Users\\h0tp\\Documents\\Code\\gemini-cli-openai\\uploads\\file-9dc5ebda7da0307f-secret.txt"
+    }
+  }
+}

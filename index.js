@@ -1,13 +1,34 @@
 require('dotenv').config();
 const fastify = require('fastify')({ logger: true });
 const cors = require('@fastify/cors');
+const multipart = require('@fastify/multipart');
 const { runGeminiBridge } = require('./src/bridge');
 const { formatChatCompletionChunk, formatChatCompletion, formatModelsList } = require('./src/openai-utils');
+const fileManager = require('./src/file-manager');
 
 fastify.register(cors, { origin: '*' });
+fastify.register(multipart);
 
 fastify.get('/v1/models', async (request, reply) => {
     return JSON.parse(formatModelsList());
+});
+
+fastify.get('/v1/files', async (request, reply) => {
+    return { object: 'list', data: fileManager.listFiles() };
+});
+
+fastify.post('/v1/files', async (request, reply) => {
+    const data = await request.file();
+    if (!data) {
+        return reply.status(400).send({ error: 'No file uploaded' });
+    }
+
+    const buffer = await data.toBuffer();
+    const fileObj = await fileManager.saveFile(buffer, data.filename, data.fields.purpose?.value || 'user_data');
+
+    // Remote local_path from response to match OpenAI
+    const { local_path, ...openaiFile } = fileObj;
+    return openaiFile;
 });
 
 fastify.post('/v1/chat/completions', async (request, reply) => {
