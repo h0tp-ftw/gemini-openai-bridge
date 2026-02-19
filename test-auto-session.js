@@ -11,7 +11,7 @@ async function runTest() {
         console.log('\n--- Turn 1: Say Hi ---');
         const m1 = { role: 'user', content: 'Tell me a secret word: "ALBATROSS". Remember it.' };
         const res1 = await axios.post(`${API_BASE}/chat/completions`, {
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash-lite',
             messages: [m1] // NO conversation_id!
         }, {
             headers: { Authorization: `Bearer ${API_KEY}` }
@@ -24,7 +24,7 @@ async function runTest() {
         console.log('\n--- Turn 2: Ask for Secret (History Hashing) ---');
         const m2 = { role: 'user', content: 'What was the secret word? One word.' };
         const res2 = await axios.post(`${API_BASE}/chat/completions`, {
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash-lite',
             messages: [m1, asst1, m2] // Full history!
         }, {
             headers: { Authorization: `Bearer ${API_KEY}` }

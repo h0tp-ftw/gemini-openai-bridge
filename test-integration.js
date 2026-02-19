@@ -12,7 +12,7 @@ async function runTest() {
         console.log('\n--- Turn 1: Say Hi ---');
         const m1 = { role: 'user', content: 'My name is Antigravity. Remember it.' };
         const res1 = await axios.post(`${API_BASE}/chat/completions`, {
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash-lite',
             conversation_id: CONV_ID,
             messages: [m1]
         }, {
@@ -26,7 +26,7 @@ async function runTest() {
         console.log('\n--- Turn 2: Ask for Name (Sending FULL History) ---');
         const m2 = { role: 'user', content: 'What is my name? Answer in one word.' };
         const res2 = await axios.post(`${API_BASE}/chat/completions`, {
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash-lite',
             conversation_id: CONV_ID,
             messages: [m1, asst1, m2] // Full history!
         }, {
@@ -45,7 +45,7 @@ async function runTest() {
         // 3. JSON Mode Test
         console.log('\n--- Turn 3: JSON Mode Test ---');
         const res3 = await axios.post(`${API_BASE}/chat/completions`, {
-            model: 'gemini-2.0-flash',
+            model: 'gemini-2.5-flash-lite',
             response_format: { type: 'json_object' },
             messages: [{ role: 'user', content: 'Return a JSON with your current mood.' }]
         }, {

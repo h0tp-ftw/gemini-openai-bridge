@@ -187,6 +187,7 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
 
         // 3. Prepare environment and arguments
         const env = { ...process.env, NO_COLOR: '1' };
+
         const args = [
             '-p', prompt,
             '--output-format', 'stream-json',
@@ -224,8 +225,13 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         }
 
         // Map selection to GEMINI_MODEL env var
-        if (options.model && options.model !== 'gemini-cli-bridge') {
-            env.GEMINI_MODEL = options.model;
+        let selectedModel = options.model;
+        if (!selectedModel || selectedModel === 'gemini-cli-bridge') {
+            selectedModel = settings.model?.name || 'gemini-2.5-flash-lite';
+        }
+
+        if (selectedModel) {
+            env.GEMINI_MODEL = selectedModel;
         }
 
         // Map generation parameters
@@ -280,6 +286,7 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         const voltaPath = path.join(os.homedir(), 'AppData', 'Local', 'Volta', 'bin', 'gemini.cmd');
         const geminiPath = process.env.GEMINI_CLI_PATH || (fs.existsSync(voltaPath) ? voltaPath : 'gemini');
         console.log(`Spawning Gemini CLI via path: ${geminiPath}`);
+        console.log(`Model: ${env.GEMINI_MODEL || 'default'}`);
 
         const child = spawn(geminiPath, args, {
             stdio: ['ignore', 'pipe', 'pipe'],

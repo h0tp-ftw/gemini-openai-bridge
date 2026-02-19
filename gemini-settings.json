@@ -12,6 +12,6 @@
         "enabled": false
     },
     "model": {
-        "name": "gemini-2.0-flash-exp"
+        "name": "gemini-2.5-flash-lite"
     }
 }

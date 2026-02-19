@@ -29,9 +29,12 @@ This adds `BRIDGE_API_KEY=sk-gemini-...` to your `.env`. Clients must then send 
 Configure models in `gemini-settings.json` to customize the `/v1/models` list:
 ```json
 {
+  "general": {
+    "previewFeatures": true
+  },
   "models": [
-    { "id": "gemini-2.5-pro" },
-    { "id": "gemini-2.5-flash" }
+    { "id": "gemini-2.5-flash-lite", "owned_by": "google" },
+    { "id": "gemini-2.0-pro-exp-02-05", "owned_by": "google" }
   ]
 }
 ```
@@ -45,6 +48,10 @@ node index.js
 
 ### Endpoints
 
+6. **Models**: The bridge exposes the following models by default (plus any you add to `gemini-settings.json`):
+    - `gemini-2.5-flash-lite` (Default, Fast & Cheap)
+    - `gemini-2.0-pro-exp-02-05` (Reasoning & Complex Tasks)
+    - `gemini-2.0-flash-exp` (High Speed)
 - `GET /v1/models`: Lists Gemini models.
 - `POST /v1/chat/completions`: Standard chat endpoint (Streaming & Non-Streaming).
 - `POST /v1/responses`: Modern Responses API.
