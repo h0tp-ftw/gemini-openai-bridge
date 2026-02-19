@@ -3,7 +3,7 @@ const fastify = require('fastify')({ logger: true });
 const cors = require('@fastify/cors');
 const multipart = require('@fastify/multipart');
 const { runGeminiBridge } = require('./src/bridge');
-const { formatChatCompletionChunk, formatChatCompletion, formatModelsList } = require('./src/openai-utils');
+const { formatChatCompletionChunk, formatChatCompletion, formatModelsList, formatResponse } = require('./src/openai-utils');
 const fileManager = require('./src/file-manager');
 
 fastify.register(cors, { origin: '*' });
@@ -20,7 +20,7 @@ fastify.get('/v1/files', async (request, reply) => {
 fastify.post('/v1/files', async (request, reply) => {
     const data = await request.file();
     if (!data) {
-        return reply.status(400).send({ error: 'No file uploaded' });
+        return reply.status(400).send({ error: { message: 'No file uploaded', type: 'invalid_request_error', param: null, code: null } });
     }
 
     const buffer = await data.toBuffer();
@@ -38,7 +38,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
     } = request.body;
 
     if (!messages || !Array.isArray(messages)) {
-        return reply.status(400).send({ error: 'Invalid messages' });
+        return reply.status(400).send({ error: { message: 'Invalid messages', type: 'invalid_request_error', param: 'messages', code: null } });
     }
 
     if (stream) {
@@ -79,7 +79,7 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
             },
             (error) => {
                 fastify.log.error(error);
-                reply.raw.write(`data: ${JSON.stringify({ error: error.message })}\n\n`);
+                reply.raw.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'api_error', param: null, code: null } })}\n\n`);
                 reply.raw.end();
             }
         );
@@ -109,6 +109,78 @@ fastify.post('/v1/chat/completions', async (request, reply) => {
                         }
                     }
                     resolve(JSON.parse(formatChatCompletion(id, modelName, response, usage)));
+                },
+                (error) => {
+                    reject(error);
+                }
+            );
+        });
+    }
+});
+
+fastify.post('/v1/responses', async (request, reply) => {
+    // The Responses API uses 'input' as an array of items, or 'messages'
+    const {
+        messages, input, stream, model, tools, tool_choice,
+        temperature, max_tokens, top_p, stop
+    } = request.body;
+
+    // Normalize input to messages for the bridge
+    let normalizedMessages = messages;
+    if (!normalizedMessages && input) {
+        normalizedMessages = (Array.isArray(input) ? input : [input]).map(item => {
+            if (typeof item === 'string') return { role: 'user', content: item };
+            if (item.type === 'input_text') return { role: 'user', content: item.text };
+            return { role: 'user', content: JSON.stringify(item) }; // Fallback
+        });
+    }
+
+    if (!normalizedMessages || !Array.isArray(normalizedMessages)) {
+        return reply.status(400).send({ error: { message: 'Invalid messages or input', type: 'invalid_request_error', param: 'input', code: null } });
+    }
+
+    if (stream) {
+        reply.raw.setHeader('Content-Type', 'text/event-stream');
+        reply.raw.setHeader('Cache-Control', 'no-cache');
+        reply.raw.setHeader('Connection', 'keep-alive');
+
+        runGeminiBridge(
+            normalizedMessages,
+            { model, tools, tool_choice, temperature, max_tokens, top_p, stop },
+            (chunk) => {
+                reply.raw.write(`data: ${chunk}\n\n`);
+            },
+            (id, modelName, fullResponse, stats) => {
+                // Responses API matches chat completion chunk format for SSE mostly
+                reply.raw.write(`data: ${formatChatCompletionChunk(id, modelName, null, 'stop')}\n\n`);
+                reply.raw.write('data: [DONE]\n\n');
+                reply.raw.end();
+            },
+            (error) => {
+                fastify.log.error(error);
+                reply.raw.write(`data: ${JSON.stringify({ error: { message: error.message, type: 'api_error', param: null, code: null } })}\n\n`);
+                reply.raw.end();
+            }
+        );
+
+        return reply;
+    } else {
+        return new Promise((resolve, reject) => {
+            runGeminiBridge(
+                normalizedMessages,
+                { model, tools, tool_choice, temperature, max_tokens, top_p, stop },
+                (chunk) => { },
+                (id, modelName, response, stats) => {
+                    let usage = null;
+                    if (stats) {
+                        usage = {
+                            prompt_tokens: stats.input_tokens,
+                            completion_tokens: stats.output_tokens,
+                            total_tokens: stats.total_tokens
+                        };
+                    }
+                    const responseObj = JSON.parse(formatResponse(id, modelName, response, usage));
+                    resolve(responseObj);
                 },
                 (error) => {
                     reject(error);

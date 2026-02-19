@@ -97,9 +97,31 @@ function formatModelsList() {
     return JSON.stringify({ object: 'list', data: models });
 }
 
+function formatResponse(id, model, content, usage = null) {
+    return JSON.stringify({
+        id,
+        object: 'response',
+        status: 'completed',
+        created: Math.floor(Date.now() / 1000),
+        model,
+        output: [
+            {
+                type: 'text',
+                text: content
+            }
+        ],
+        usage: usage || {
+            prompt_tokens: 0,
+            completion_tokens: 0,
+            total_tokens: 0
+        }
+    });
+}
+
 module.exports = {
     formatChatCompletionChunk,
     formatChatCompletion,
     formatToolCallChunk,
-    formatModelsList
+    formatModelsList,
+    formatResponse
 };
