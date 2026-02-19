@@ -262,7 +262,9 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
                 "run_shell_command", "google_web_search", "web_fetch", "browser",
                 "canvas", "nodes", "cron", "message", "gateway", "agents_list",
                 "sessions_list", "sessions_history", "sessions_send", "sessions_spawn",
-                "subagents", "session_status", "image"
+                "subagents", "session_status", "image",
+                // Exclude client-side tools to prevent param mismatch or double execution
+                "read_file", "write_file", "list_files", "search_files", "edit_file"
             ];
 
             nativeTools.forEach(t => {
