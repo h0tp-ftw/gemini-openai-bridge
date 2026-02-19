@@ -63,7 +63,7 @@ node index.js
 To maintain context across separate API calls, send a `conversation_id` in your request body:
 ```json
 {
-  "model": "gemini-2.0-flash",
+  "model": "gemini-2.5-flash-lite",
   "conversation_id": "unique-session-123",
   "messages": [{"role": "user", "content": "What did I just say?"}]
 }

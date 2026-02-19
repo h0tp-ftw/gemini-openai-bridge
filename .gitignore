@@ -1,29 +1,68 @@
+# Node.js
 node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment Variables
 .env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Python/Pytest
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.venv/
+venv/
+env/
+requirements-test.txt
+
+# Logs
+logs/
 *.log
-package-lock.json
-uploads/
-debug-gemini.log
-raw-response.json
-final-response.json
-test-ai-sdk-vercel.js
-test-responses-endpoint.js
-test-direct-bridge.js
-test-error-format.js
-test-endpoint.js
-test-final.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 cli_raw.log
 debug.log
+debug-gemini.log
+debug-server*.log
+server.*.log
+bridge_debug*.log
 
-# Temporary and test files
+# Runtime Data
+sessions.json
+pids.json
+*.pid
+*.seed
+*.pid.lock
+
+# Temporary/Test Files
+uploads/
 tmp/
-*.txt
-.pytest_cache/
-__pycache__/
+*.tmp
+*.temp
 test_output.txt
 test_results.txt
 streaming_stats.txt
-bridge_debug*.log
-debug-server*.log
-server.*.log
-sessions.json
+raw-response.json
+final-response.json
+test-*.js
+!test-integration.js
+!test-auto-session.js
+!test-final-verify.js
+
+# OS Generated
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
