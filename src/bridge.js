@@ -222,65 +222,73 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
             }
         }
 
-        const geminiPath = 'C:\\Users\\h0tp\\AppData\\Local\\Volta\\bin\\gemini.cmd';
-        console.log(`Spawning ${geminiPath}...`);
+        const voltaPath = 'C:\\Users\\h0tp\\AppData\\Local\\Volta\\bin\\gemini.cmd';
+        const geminiPath = fs.existsSync(voltaPath) ? voltaPath : 'gemini';
+        console.log(`Spawning Gemini CLI via path: ${geminiPath} (shell: false)`);
 
         const child = spawn(geminiPath, args, {
             stdio: ['inherit', 'pipe', 'pipe'],
-            env
+            env,
+            shell: false
         });
 
-        child.stdout.on('data', (data) => {
-            const lines = data.toString().split('\n');
-            for (const line of lines) {
-                if (!line.trim()) continue;
-                try {
-                    const json = JSON.parse(line);
-                    if (json.type === 'message' && json.role === 'assistant' && json.content) {
-                        const content = json.content;
+        const readline = require('readline');
+        const rl = readline.createInterface({
+            input: child.stdout,
+            terminal: false
+        });
 
-                        if (isBufferingToolCall) {
-                            toolCallBuffer += content;
-                            // Check if the JSON block is potentially closed
-                            if (toolCallBuffer.trim().endsWith('}')) {
-                                try {
-                                    const toolCall = JSON.parse(toolCallBuffer);
-                                    onChunk(formatToolCallChunk(id, model, toolCall));
-                                    isBufferingToolCall = false;
-                                    toolCallBuffer = '';
-                                } catch (e) {
-                                    // Still not complete or invalid JSON, keep buffering
-                                }
-                            }
-                        } else if (content.includes('TOOL_CALL:')) {
-                            const parts = content.split('TOOL_CALL:');
-                            // Content before TOOL_CALL is normal text
-                            if (parts[0].trim()) {
-                                fullResponse += parts[0];
-                                onChunk(formatChatCompletionChunk(id, model, parts[0]));
-                            }
+        rl.on('line', (line) => {
+            if (!line.trim()) return;
+            try {
+                const json = JSON.parse(line);
+                if (json.type === 'message' && json.role === 'assistant' && json.content) {
+                    const content = json.content;
 
-                            isBufferingToolCall = true;
-                            toolCallBuffer = parts[1].trim();
-
-                            // Check if it's already complete in one chunk
-                            if (toolCallBuffer.endsWith('}')) {
-                                try {
-                                    const toolCall = JSON.parse(toolCallBuffer);
-                                    onChunk(formatToolCallChunk(id, model, toolCall));
-                                    isBufferingToolCall = false;
-                                    toolCallBuffer = '';
-                                } catch (e) { }
+                    if (isBufferingToolCall) {
+                        toolCallBuffer += content;
+                        // Check if the JSON block is potentially closed
+                        if (toolCallBuffer.trim().endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                            } catch (e) {
+                                // Still not complete or invalid JSON, keep buffering
                             }
-                        } else {
-                            fullResponse += content;
-                            onChunk(formatChatCompletionChunk(id, model, content));
                         }
-                    } else if (json.type === 'result' && json.stats) {
-                        stats = json.stats;
+                    } else if (content.includes('TOOL_CALL:')) {
+                        const parts = content.split('TOOL_CALL:');
+                        // Content before TOOL_CALL is normal text
+                        if (parts[0].trim()) {
+                            fullResponse += parts[0];
+                            onChunk(formatChatCompletionChunk(id, model, parts[0]));
+                        }
+
+                        isBufferingToolCall = true;
+                        toolCallBuffer = parts[1].trim();
+
+                        // Check if it's already complete in one chunk
+                        if (toolCallBuffer.endsWith('}')) {
+                            try {
+                                const toolCall = JSON.parse(toolCallBuffer);
+                                onChunk(formatToolCallChunk(id, model, toolCall));
+                                isBufferingToolCall = false;
+                                toolCallBuffer = '';
+                            } catch (e) { }
+                        }
+                    } else {
+                        fullResponse += content;
+                        onChunk(formatChatCompletionChunk(id, model, content));
                     }
-                } catch (e) {
-                    // Not JSON or partial JSON
+                } else if (json.type === 'result' && json.stats) {
+                    stats = json.stats;
+                }
+            } catch (e) {
+                // Not JSON - might be raw text from Gemini
+                if (line.includes('TOOL_CALL:') || isBufferingToolCall) {
+                    // Fallback for non-JSON tool calls if necessary
                 }
             }
         });
@@ -288,23 +296,51 @@ ${use_native_tools ? '' : 'IMPORTANT: Use ONLY the tools listed above. Do NOT us
         child.stderr.on('data', (data) => {
             const msg = data.toString();
             process.stderr.write(`Gemini CLI Error: ${msg}\n`);
+            // Capture boot errors
+            if (msg.includes('command not found') || msg.includes('is not recognized')) {
+                onError(new Error(`Gemini CLI command failed: ${msg.trim()}`));
+                child.kill();
+            }
+        });
+
+        child.on('error', (err) => {
+            onError(new Error(`Failed to start Gemini CLI: ${err.message}`));
+        });
+
+        let isRlClosed = false;
+        let isChildClosed = false;
+        let exitCode = null;
+
+        const maybeEnd = () => {
+            if (isRlClosed && isChildClosed) {
+                // Cleanup all temporary files in the queue
+                cleanupQueue.forEach(f => {
+                    if (f && fs.existsSync(f)) {
+                        try {
+                            fs.unlinkSync(f);
+                        } catch (err) { }
+                    }
+                });
+
+                if (exitCode !== 0 && exitCode !== null) {
+                    onError(new Error(`Gemini CLI exited with code ${exitCode}. Check if it is installed and authenticated.`));
+                } else if (fullResponse || stats) {
+                    onEnd(id, model, fullResponse, stats);
+                } else {
+                    onEnd(id, model, "", null);
+                }
+            }
+        };
+
+        rl.on('close', () => {
+            isRlClosed = true;
+            maybeEnd();
         });
 
         child.on('close', (code) => {
-            // Cleanup all temporary files in the queue
-            cleanupQueue.forEach(f => {
-                if (f && fs.existsSync(f)) {
-                    try {
-                        fs.unlinkSync(f);
-                    } catch (err) { }
-                }
-            });
-
-            if (code !== 0) {
-                onError(new Error(`Gemini CLI exited with code ${code}`));
-            } else {
-                onEnd(id, model, fullResponse, stats);
-            }
+            isChildClosed = true;
+            exitCode = code;
+            maybeEnd();
         });
 
         return child;
