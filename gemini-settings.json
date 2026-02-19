@@ -1,9 +1,6 @@
 {
     "general": {
-        "previewFeatures": true,
-        "checkpointing": {
-            "enabled": true
-        }
+        "previewFeatures": true
     },
     "privacy": {
         "usageStatisticsEnabled": false

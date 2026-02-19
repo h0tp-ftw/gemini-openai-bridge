@@ -2,6 +2,28 @@
 
 An OpenAI-compatible API bridge for the Gemini CLI. Fastify-based local server that translates v1/chat/completions to headless Gemini CLI calls.
 
+## ⚠️ Archive Notice: Why This Architecture Was Deprecated
+
+This project was an attempt to wrap the Google Gemini Command Line Interface (CLI) in a local HTTP server to act as a drop-in, OpenAI-compatible API endpoint. While technically functional for basic text generation, it was archived due to insurmountable architectural bottlenecks and latency issues when dealing with complex agentic loops (e.g., OpenClaw).
+
+**C'est un cul-de-sac (It is a dead end).** The fundamental mismatch between a stateless HTTP protocol and a stateful, local CLI process creates the following hard limitations:
+
+### 1. The ReAct Loop Latency (Process Spawning Overhead)
+The OpenAI API specification expects rapid, stateless HTTP responses. Because this proxy wraps a CLI binary, every incoming request forces the OS to spawn a new shell process, authenticate, initialize the Go/Node environment, execute, and tear down. In a multi-step ReAct agent loop requiring 10-20 sequential tool calls, this introduces a compounding 3 to 5-second startup penalty per turn. The compounding dead time suffocates agentic performance.
+
+### 2. The Execution Mismatch (The "Two Managers" Problem)
+The OpenAI tool-calling spec dictates that the server acts as a passive brain: it returns a JSON tool_calls intent, and the client executes the code.
+However, the Gemini CLI has its own internal reasoning loop and executes tools natively (via its own TypeScript tools or local MCP servers). Stacking an OpenAI proxy on top of an agentic CLI strips the client application of its execution control. The proxy either returns unparsable text blocks instead of JSON tool intents, or requires highly unstable, custom client-side modifications that defeat the purpose of a "universal" proxy.
+
+### 3. The Context Wall (OS vs. Statelessness)
+Because the OpenAI protocol is stateless, every request must include the entire conversation history. Passing 30,000+ tokens of JSON history to a CLI binary natively hits hard OS limits (e.g., the 8191-character ARG_MAX limit in Windows cmd.exe). Bypassing this by piping temporary files to stdin creates a massive Disk I/O bottleneck and garbage collection nightmare for every single API call.
+
+### 4. Concurrency and File-Locking Collisions
+The Gemini CLI relies on a global, persistent configuration file (e.g., `settings.json`) to manage state and connections. A stateless HTTP proxy attempting to serve concurrent requests cannot dynamically overwrite this global configuration file to map temporary tool environments without causing immediate file-locking crashes and race conditions.
+
+### 5. Stream Fragmentation
+Capturing the CLI's standard output (stdout) pipe to translate streaming JSON chunks back to the client is highly fragile. OS-level pipes do not respect JSON object boundaries and flush based on arbitrary byte buffers. This causes fragmented JSON strings that require complex, brittle accumulation logic that breaks immediately upon minor CLI formatting updates.
+
 ## Prerequisites
 
 - Node.js installed.
