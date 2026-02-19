@@ -1,1 +1,16 @@
-node_modules\n.env\n*.log\npackage-lock.json
+node_modules/
+.env
+*.log
+package-lock.json
+uploads/
+debug-gemini.log
+raw-response.json
+final-response.json
+test-ai-sdk-vercel.js
+test-responses-endpoint.js
+test-direct-bridge.js
+test-error-format.js
+test-endpoint.js
+test-final.js
+cli_raw.log
+debug.log

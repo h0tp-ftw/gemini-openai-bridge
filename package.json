@@ -11,8 +11,10 @@
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.30",
     "@fastify/cors": "^11.2.0",
     "@fastify/multipart": "^9.4.0",
+    "ai": "^6.0.91",
     "axios": "^1.13.5",
     "cross-spawn": "^7.0.6",
     "dotenv": "^17.3.1",
