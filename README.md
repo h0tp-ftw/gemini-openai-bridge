@@ -2,11 +2,11 @@
 
 An OpenAI-compatible API bridge for the Gemini CLI. Fastify-based local server that translates v1/chat/completions to headless Gemini CLI calls.
 
-## ⚠️ Archive Notice: Why This Architecture Was Deprecated
+## ⚠️ Archive Notice: Check out the successor [Ionosphere](https://github.com/h0tp-ftw/ionosphere)
 
 This project was an attempt to wrap the Google Gemini Command Line Interface (CLI) in a local HTTP server to act as a drop-in, OpenAI-compatible API endpoint. While technically functional for basic text generation, it was archived due to insurmountable architectural bottlenecks and latency issues when dealing with complex agentic loops (e.g., OpenClaw).
 
-**C'est un cul-de-sac (It is a dead end).** The fundamental mismatch between a stateless HTTP protocol and a stateful, local CLI process creates the following hard limitations:
+**It is a dead end.** The fundamental mismatch between a stateless HTTP protocol and a stateful, local CLI process creates the following hard limitations:
 
 ### 1. The ReAct Loop Latency (Process Spawning Overhead)
 The OpenAI API specification expects rapid, stateless HTTP responses. Because this proxy wraps a CLI binary, every incoming request forces the OS to spawn a new shell process, authenticate, initialize the Go/Node environment, execute, and tear down. In a multi-step ReAct agent loop requiring 10-20 sequential tool calls, this introduces a compounding 3 to 5-second startup penalty per turn. The compounding dead time suffocates agentic performance.
